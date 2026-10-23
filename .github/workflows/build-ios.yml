@@ -1,0 +1,41 @@
+name: Build iOS ESP Spam Menu
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      # Node 20 is deprecated on hosted runners; v5 actions run on Node 24.
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Show Apple SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          cmake --version
+          python3 --version
+      - name: Portable checks
+        run: |
+          cmake -S . -B build-core -DVT_UI_TESTS_ONLY=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-core --parallel 2
+          ctest --test-dir build-core --output-on-failure
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          python3 tests/check_release.py
+      - name: Build arm64 library
+        run: bash build_dylib.sh
+      - name: Verify artifact
+        run: |
+          test -f dist/VTMenu.dylib
+          test -f dist/menu-build.json
+          python3 -c "import json;d=json.load(open('dist/menu-build.json'));assert d['menu_revision']==5;assert d['features']==['esp','spam_jump'];print(d)"
+          otool -l dist/VTMenu.dylib | grep -A2 LC_BUILD_VERSION
+      - uses: actions/upload-artifact@v5
+        with:
+          name: VTMenu-iOS-ESP-Spam-R5
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
